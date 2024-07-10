@@ -81,10 +81,68 @@ We would like to extend the functionality, to allow the sender of a message to a
 While we don't expect everyone to complete this part of the exercise, it will form the basis of disucssion in an interview. Please make as much progress with this, as you feel comfortable doing. Don't allow it to be all-consuming. A couple of hours at most for all parts of the exercise. 
 
 We'd love to hear about
-* How you would go about implementing the solution
-* What problems you might encounter
-* How you would go about testing
-* What you might do differently
+
+### How you would go about implementing the solution
+
+The functional requirements include:
+- sender of message can add/update          a tag
+- any user          can search messages using tags
+
+Following is the system design:
+
+**API**
+
+| Endpoint | Method | Payload | Response | Description |
+|----------|--------|--------------|----------|-------------|
+| `/messages/{messageId}/tags` | GET | N/A | `{ "tags": ["tag1", "tag2", ...] }` | Get all tags for a specific message |
+| `/messages/{messageId}/tags` | POST | `{ "tag": "new_tag" }` | `{ "message": "Tag added successfully", "tags": ["tag1", "new_tag", ...] }` | Add a new tag to a message |
+| `/messages/{messageId}/tags/{tagName}` | DELETE | N/A | `{ "message": "Tag removed successfully", "tags": ["tag1", ...] }` | Remove a specific tag from a message |
+| `/messages/search` | POST | `{ "tags": ["tag1", "tag2"], "conversationId": "conv_id" }` | `{ "messages": [{ "id": "msg_id", "content": "...", "tags": [...] }, ...] }` | Search for messages by tags within a conversation |
+| `/conversations/{conversationId}/tags` | GET | N/A | `{ "tags": ["tag1", "tag2", ...] }` | Get all unique tags used in a conversation |
+| `/tags` | GET | N/A | `{ "tags": ["tag1", "tag2", ...] }` | Get all unique tags across all messages |
+
+
+**Database**
+
+1. Update message schema (probably inside `/src/message/models`) to store tags
+2. Need to run a migration to add the tags field to all existing documents.
+3. Create an index for tags field to improve query performance when searching for message by tags (improves read perfomance but may affect write performance).
+4. (maybe; see next question) Validate tags to ensure they meet certain criteria
+
+
+**Server-side**
+
+1. Create new message DTOs for tag-related operations (adding, updating tags; searching by tags).
+2. Update `src/message/.data.ts` to handle these tag-related operations on database.
+3. Update `src/message/.resolver.ts` to add new mutations and queries for GraphQL API requests.
+4. Update GraphQL schema to include these mutations and queries.
+5. (maybe) Update coversation websocket to emit real-time events when tags are added or removed from messages
+6. (maybe; see next question) Implement tag suggestions for autocomplete by fetching popular tags from db.
+
+
+### What problems you might encounter
+
+- normalising tag format to avoid duplication and difficulty in searching: remove whitespace, special charcaters, uppercase 
+- autosuggest/autocomplete tag creation
+- cache hot tags
+- access control on tag addition, modification, and deletion
+- use a relational database
+
+
+### How you would go about testing
+1. Unit Tests
+    - Normal functionality tests include adding, removing and searching for tags
+    - Abnormal functionality tests such as adding duplicate tags, removing non-existant, searching for tags that don't exist
+    - Checking proper permissions tests for addition and removal of tags
+    - Check mutations and queries create requests and responses which match expected structures
+2. Integration Tests
+    - Test full folow of each tag operation
+3. Performance Tests
+    - Find response time and memroy usage when performing operations over large datasets (conversations)
+4. Real-time update Tests
+    - Test that tag additions and removals are broadcast to all relevant clients
+
+
 
 # Additional
 The following docs are from the live service repo. You may find them helpful. 
