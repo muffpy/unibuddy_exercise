@@ -97,7 +97,7 @@ Following is the system design:
 | `/messages/{messageId}/tags` | GET | N/A | `{ "tags": ["tag1", "tag2", ...] }` | Get all tags for a specific message |
 | `/messages/{messageId}/tags` | POST | `{ "tag": "new_tag" }` | `{ "message": "Tag added successfully", "tags": ["tag1", "new_tag", ...] }` | Add a new tag to a message |
 | `/messages/{messageId}/tags/{tagName}` | DELETE | N/A | `{ "message": "Tag removed successfully", "tags": ["tag1", ...] }` | Remove a specific tag from a message |
-| `/messages/search` | POST | `{ "tags": ["tag1", "tag2"], "conversationId": "conv_id" }` | `{ "messages": [{ "id": "msg_id", "content": "...", "tags": [...] }, ...] }` | Search for messages by tags within a conversation |
+| `/messages/search` | GET | `{ "tags": ["tag1", "tag2"], "conversationId": "conv_id" }` | `{ "messages": [{ "id": "msg_id", "content": "...", "tags": [...] }, ...] }` | Search for messages by tags within a conversation |
 | `/conversations/{conversationId}/tags` | GET | N/A | `{ "tags": ["tag1", "tag2", ...] }` | Get all unique tags used in a conversation |
 | `/tags` | GET | N/A | `{ "tags": ["tag1", "tag2", ...] }` | Get all unique tags across all messages |
 
@@ -106,8 +106,8 @@ Following is the system design:
 
 1. Update message schema (probably inside `/src/message/models`) to store tags
 2. Need to run a migration to add the tags field to all existing documents.
-3. Create an index for tags field to improve query performance when searching for message by tags (improves read perfomance but may affect write performance).
-4. (maybe; see next question) Validate tags to ensure they meet certain criteria
+3. (maybe) Create a compound index on conversationID and tags field for the messages collection to improve query performance when searching for message by tags.
+4. (maybe) Validate tags to ensure they meet certain criteria
 
 
 **Server-side**
@@ -117,17 +117,7 @@ Following is the system design:
 3. Update `src/message/.resolver.ts` to add new mutations and queries for GraphQL API requests.
 4. Update GraphQL schema to include these mutations and queries.
 5. (maybe) Update coversation websocket to emit real-time events when tags are added or removed from messages
-6. (maybe; see next question) Implement tag suggestions for autocomplete by fetching popular tags from db.
-
-
-### What problems you might encounter
-
-- normalising tag format to avoid duplication and difficulty in searching: remove whitespace, special charcaters, uppercase 
-- autosuggest/autocomplete tag creation
-- cache hot tags
-- access control on tag addition, modification, and deletion
-- use a relational database
-
+6. (maybe) Implement tag suggestions for autocomplete by fetching popular tags from db.
 
 ### How you would go about testing
 1. Unit Tests
@@ -142,6 +132,40 @@ Following is the system design:
 4. Real-time update Tests
     - Test that tag additions and removals are broadcast to all relevant clients
 
+
+### What problems you might encounter
+
+In order of importance:
+
+1. Access control
+    - Determining who can add, modify, or delete tags is crucial for maintaining data integrity and respecting user permissions.
+    - We need to ensure the option to add or modify tags is only available for messages sent by the current user.
+    - Solution: Render these options on the frontend only for messages the current user sends.
+
+2. Tag normalisation
+    - Inconsistent tag formats can lead to duplication and difficulty in searching.
+    - Solution 1: Remove whitespace, special charcaters. Change uppercase letters to lowercase.
+    - Solution 2: Use a predefined list of allowed tags to prevent arbitrary tagging.
+
+3. User experience
+    - Need to designing an interface that allows for easy tagging without overwhelming users.
+    - Note that we can already add tags to conversations and now we want to extedn this to messages. This can be confusing - it may not be immediately clear which tags apply to the entire conversation versus individual messages.
+    - Solution: Ensure clear visual and functional differentiation between conversation and message tags in the UI. Provide clear documentation and guidelines for users on when and how to use tags at each level.
+    - Extension: Autocomplete tag creation. Can be achieved using Elasticsearch which is a full text search engine over noSQL data,so it is directly compatible with our DB. Elastic search takes some time for indexing. Also, we are not using elastic search as our primary DB, so data sync will have some latency, but here we can ensure eventual consistency.
+    <br>
+    <img src="/tagsystem.png">
+
+4. Real-time updates
+    - In a chat application, real-time updates are crucial for a good user experience. 
+    - Need to propagate tag changes to all relevant clients in real-time.
+    - Solution: Extend the existing WebSocket implementation to include tag update events.
+
+5. Performance challenges
+    - As the conversations get larger and the number of messages and tags grow, querying by tags can become slow if not optimized.
+    - Note however that we should always priortize core functionality of chat application - fast message creation and delivery - while being prepared to optimize tag queries if and when they become a performance bottleneck. Premature optimization can be counterproductive.
+    - Solution 1: implement database indexing on tags field to speed up queries but this may affect write performance as the index needs to updated every time a message is created or its tags are modified.
+    - Solution 2: Consider caching popular tag searches or implementing a denormalized data structure for faster tag lookups if needed.
+    - Solution 3: Using database profiling, identify slow queries related to tag operations. Consider partial indexing (specific conversations), sparse indexing (specific messages) or time-based indexing (most recent messages) etc.
 
 
 # Additional
